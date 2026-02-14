@@ -53,7 +53,8 @@ fn main() {
 
 fn run_app() -> error::RopsResult<()> {
     // Read configuration file
-    let settings = settings::Settings::load("devops.config.toml");
+    let config_name = std::env::var("ROPS_CONFIG").unwrap_or_else(|_| "rops.toml".to_string());
+    let settings = settings::Settings::load(&config_name);
 
     let app = CliArgs::parse();
     match app {
