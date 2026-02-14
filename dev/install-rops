@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -e
+
+
+# Load environment variables from .env file
+ENV_FILE="${PWD}/.env"
+touch "${ENV_FILE}"
+export $(grep -v '^#' "${ENV_FILE}" | xargs)
+
+
+raw_arch=$(uname -m)
+
+# Determine the architecture string ("amd64" or "arm64")
+case "$raw_arch" in
+  x86_64)
+    ARCH="amd64"
+    URL=${AMD64_BINARY_URL}
+    ;;
+  aarch64|arm64)  # Match both 'aarch64' and 'arm64' outputs
+    ARCH="arm64"
+    URL=${ARM64_BINARY_URL}
+    ;;
+  *)
+    echo "Error: Detected architecture '$raw_arch' is not explicitly supported as amd64 or arm64." >&2
+    exit 1
+    ;;
+esac
+
+EXECUTABLE="rops-${ARCH}"
+
+# Fetch the release JSON from GitHub API
+RELEASE_JSON=$(curl -s \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    https://api.github.com/repos/quantmind/rops/releases/latest)
+
+echo "Release JSON: ${RELEASE_JSON}"
+# Extract the top-level release name from the JSON file
+TAG=$(echo "${RELEASE_JSON}" | grep -oP '"name":\s*"\K[^"]+' | head -n 1)
+
+if [ -z "${TAG}" ]; then
+  echo "Error: Top-level release name not found in the JSON file." >&2
+  exit 1
+fi
+
+
+# Extract the asset ID for the given asset name from RELEASE_JSON
+ASSET_ID=$(echo "${RELEASE_JSON}" | grep -oP '"id":\s*\d+|"name":\s*"'${EXECUTABLE}'"' | paste - - | grep "\"name\": \"${EXECUTABLE}\"" | sed -n 's/.*"id":\s*\([0-9]*\).*/\1/p')
+
+if [ -z "${ASSET_ID}" ]; then
+  echo "Error: Asset with name '${EXECUTABLE}' not found in the release assets." >&2
+  exit 1
+fi
+
+INSTALL_DIR="$HOME/bin"
+
+# Create the ~/bin directory if it doesn't exist
+mkdir -p "$INSTALL_DIR"
+EXECUTABLE_PATH="${INSTALL_DIR}/rops"
+
+ASSET_URL="https://api.github.com/repos/quantmind/rops/releases/assets/${ASSET_ID}"
+echo "Download rops executable from ${ASSET_URL}"
+curl -L \
+    -H "Accept: application/octet-stream" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    ${ASSET_URL} -o ${EXECUTABLE_PATH}
+
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to download the asset '${BINARY_NAME}'." >&2
+  exit 1
+fi
+
+chmod +x ${EXECUTABLE_PATH}
+echo "Installed ${EXECUTABLE_PATH}"
+
+${EXECUTABLE_PATH} settings
