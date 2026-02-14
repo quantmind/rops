@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
+# Install rops binary from GitHub releases
+#
+# Usage:
+#   Local: ./install-rops
+#   Remote: curl -sSL https://raw.githubusercontent.com/quantmind/rops/main/dev/install-rops | GITHUB_TOKEN=your_token bash
+#
+# Requirements:
+#   - GITHUB_TOKEN environment variable (for accessing private repos or avoiding rate limits)
 
-# Load environment variables from .env file
+# Load environment variables from .env file if it exists (for local development)
 ENV_FILE="${PWD}/.env"
-touch "${ENV_FILE}"
-export $(grep -v '^#' "${ENV_FILE}" | xargs)
+if [ -f "${ENV_FILE}" ]; then
+  export $(grep -v '^#' "${ENV_FILE}" | xargs)
+fi
 
 
 raw_arch=$(uname -m)
@@ -28,11 +37,23 @@ esac
 
 EXECUTABLE="rops-${ARCH}"
 
+# Prepare authentication header if GITHUB_TOKEN is set
+AUTH_HEADER=""
+if [ -n "${GITHUB_TOKEN}" ]; then
+  AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
+fi
+
 # Fetch the release JSON from GitHub API
-RELEASE_JSON=$(curl -s \
-    -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-    https://api.github.com/repos/quantmind/rops/releases/latest)
+if [ -n "${AUTH_HEADER}" ]; then
+  RELEASE_JSON=$(curl -s \
+      -H "Accept: application/vnd.github+json" \
+      -H "${AUTH_HEADER}" \
+      https://api.github.com/repos/quantmind/rops/releases/latest)
+else
+  RELEASE_JSON=$(curl -s \
+      -H "Accept: application/vnd.github+json" \
+      https://api.github.com/repos/quantmind/rops/releases/latest)
+fi
 
 echo "Release JSON: ${RELEASE_JSON}"
 # Extract the top-level release name from the JSON file
@@ -60,13 +81,19 @@ EXECUTABLE_PATH="${INSTALL_DIR}/rops"
 
 ASSET_URL="https://api.github.com/repos/quantmind/rops/releases/assets/${ASSET_ID}"
 echo "Download rops executable from ${ASSET_URL}"
-curl -L \
-    -H "Accept: application/octet-stream" \
-    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-    ${ASSET_URL} -o ${EXECUTABLE_PATH}
+if [ -n "${AUTH_HEADER}" ]; then
+  curl -L \
+      -H "Accept: application/octet-stream" \
+      -H "${AUTH_HEADER}" \
+      ${ASSET_URL} -o ${EXECUTABLE_PATH}
+else
+  curl -L \
+      -H "Accept: application/octet-stream" \
+      ${ASSET_URL} -o ${EXECUTABLE_PATH}
+fi
 
 if [ $? -ne 0 ]; then
-  echo "Error: Failed to download the asset '${BINARY_NAME}'." >&2
+  echo "Error: Failed to download the asset '${EXECUTABLE}'." >&2
   exit 1
 fi
 
