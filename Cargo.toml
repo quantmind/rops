@@ -1,0 +1,28 @@
+[package]
+name = "rops"
+version = "0.4.6"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+clap = { version = "^4.5.35", features = ["derive"] }
+dotenv = "0.15.0"
+flate2 = "1.1.2"
+log = "0.4.27"
+rand = "0.9.2"
+reqwest = { version = "0.12.20", features = [
+    "blocking",
+    "json",
+    "http2",
+    "rustls-tls",
+], default-features = false }
+self-replace = "1.5.0"
+semver = "1.0.26"
+serde = { version = "^1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde_yaml = "0.9.34"
+tar = "0.4.44"
+tempfile = "3.19.1"
+thiserror = "2.0.12"
+toml = "0.9.2"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
