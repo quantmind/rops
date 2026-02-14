@@ -5,11 +5,11 @@ mod docker;
 mod error;
 mod extra;
 mod git;
+mod repo;
 mod self_update;
 mod settings;
 mod system;
 mod tools;
-mod repo;
 mod utils;
 use tracing_subscriber::{EnvFilter, prelude::*};
 
@@ -39,10 +39,10 @@ enum CliArgs {
 
 fn main() {
     dotenv::from_path(".env").ok();
-    // Initialize logger
+    // Initialize logger with default info level if RUST_LOG is not set
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(EnvFilter::from_default_env())
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
     // run the application
     if let Err(err) = run_app() {
