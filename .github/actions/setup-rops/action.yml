@@ -1,0 +1,10 @@
+name: "Setup rops"
+description: "Install rops CLI tool and add to PATH"
+runs:
+  using: "composite"
+  steps:
+    - name: Install rops
+      shell: bash
+      run: |
+        curl -L https://raw.githubusercontent.com/quantmind/rops/main/dev/install-rops | bash
+        echo "$HOME/bin" >> $GITHUB_PATH
