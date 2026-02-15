@@ -36,7 +36,6 @@ fn _default_docker_image_repo_url() -> String {
 fn _default_docker_git_sha_arg() -> Option<String> {
     get_default_from_env("DOCKER_GIT_SHA_ARG", None)
 }
-
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum DockerCommand {
     /// Build a new Docker image
@@ -87,14 +86,13 @@ impl DockerCommand {
                 }
 
                 // Prepare the Docker build command
+                // Disable DOCKER_BUILDKIT to avoid manifest list creation with attestations
                 let mut command = Command::new("docker");
                 command
-                    .env("DOCKER_BUILDKIT", "1") // Enable Docker BuildKit
+                    .env("DOCKER_BUILDKIT", "0") // Disable BuildKit to avoid attestations
                     .arg("build")
                     .arg("-f")
                     .arg(&dockerfile)
-                    .arg("--platform")
-                    .arg(settings.system.to_string())
                     .arg("-t")
                     .arg(&image_name);
 
@@ -121,7 +119,6 @@ impl DockerCommand {
 
                 let mut command = Command::new("docker");
                 command
-                    .env("DOCKER_BUILDKIT", "1") // Enable Docker BuildKit
                     .arg("tag")
                     .arg(&image_name) // Correct image name
                     .arg(&tag);
@@ -135,8 +132,7 @@ impl DockerCommand {
 
                 // Push all tags with --all-tags flag
                 let mut command = Command::new("docker");
-                command
-                    .env("DOCKER_BUILDKIT", "1") // Enable Docker BuildKit
+                command // Disable Docker BuildKit
                     .arg("push")
                     .arg(&tag);
 
@@ -150,9 +146,17 @@ impl DockerCommand {
                 let manifest_tag = self.get_push_tag(name, false, settings);
                 let amd64_tag = format!("{}-amd64", manifest_tag);
                 let arm64_tag = format!("{}-arm64", manifest_tag);
-                self.push_manifest(&manifest_tag, &amd64_tag, &arm64_tag)?;
+                self.push_manifest(
+                    &manifest_tag,
+                    &amd64_tag,
+                    &arm64_tag,
+                )?;
                 if let Some(latest_tag) = self.get_latest_tag(name, settings) {
-                    self.push_manifest(&latest_tag, &amd64_tag, &arm64_tag)?;
+                    self.push_manifest(
+                        &latest_tag,
+                        &amd64_tag,
+                        &arm64_tag,
+                    )?;
                 }
                 Ok(())
             }
