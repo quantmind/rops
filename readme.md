@@ -16,7 +16,7 @@ It will download the latest release from GitHub and place the executable in `$HO
 export ROPS_INSTALL_DIR=/your/custom/path
 ```
 
-If `GITHUB_TOKEN` is set in your environment, the installer will use it to authenticate with the GitHub API and avoid rate limits. You can set it with:
+If `GITHUB_TOKEN` is set in your environment, github installers will use it to authenticate with the GitHub API and avoid rate limits. You can set it with:
 
 ```bash
 export GITHUB_TOKEN=your_token

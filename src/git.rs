@@ -1,7 +1,7 @@
 use crate::{
     error::{RopsError, RopsResult},
     settings::Settings,
-    utils::{StreamCommand, rimraf},
+    utils::{Secret, StreamCommand, rimraf},
 };
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,8 @@ pub struct GitSettings {
     pub branch: String,
     #[serde(default = "GitSettings::get_git_sha")]
     pub sha: String,
+    #[serde(default = "GitSettings::get_github_token", skip_deserializing)]
+    pub github_token: Option<Secret>,
 }
 
 #[derive(Clone, Debug)]
@@ -22,7 +24,7 @@ pub struct GithubDownloadRelease {
     pub repo: String,
     pub file_name: String,
     pub client: Client,
-    pub token: Option<String>,
+    pub token: Option<Secret>,
     pub version: Option<String>,
     /// A different download url
     pub download_url: Option<String>,
@@ -54,6 +56,10 @@ impl GitSettings {
 
     fn get_default_branch() -> String {
         std::env::var("GIT_DEFAULT_BRANCH").unwrap_or_else(|_| "main".to_string())
+    }
+
+    pub fn get_github_token() -> Option<Secret> {
+        std::env::var("GITHUB_TOKEN").ok().map(Secret::new)
     }
 
     /// Derives the Git SHA by executing `git rev-parse HEAD`.
@@ -134,23 +140,22 @@ impl GitSettings {
             )))
         }
     }
+
+    pub fn release_downloader(&self, repo: &str, file_name: &str) -> GithubDownloadRelease {
+        GithubDownloadRelease::new(repo, file_name, self.github_token.clone())
+    }
 }
 
 impl GithubDownloadRelease {
-    pub fn new(repo: &str, file_name: &str) -> Self {
+    pub fn new(repo: &str, file_name: &str, token: Option<Secret>) -> Self {
         Self {
             repo: repo.to_string(),
             file_name: file_name.to_string(),
             client: Client::new(),
-            token: None,
+            token,
             version: None,
             download_url: None,
         }
-    }
-
-    pub fn with_token<S: Into<String>>(mut self, token: S) -> Self {
-        self.token = Some(token.into());
-        self
     }
 
     pub fn with_version<S: Into<String>>(mut self, version: S) -> Self {
@@ -166,7 +171,7 @@ impl GithubDownloadRelease {
     pub fn request(&self, url: String) -> reqwest::blocking::RequestBuilder {
         let mut builder = self.client.get(url).header("User-Agent", "quantmind/rops");
         if let Some(ref token) = self.token {
-            builder = builder.header("Authorization", format!("Bearer {}", token));
+            builder = builder.header("Authorization", format!("Bearer {}", token.value()));
         }
         builder
     }

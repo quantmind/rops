@@ -11,6 +11,9 @@ pub trait FromEnv: Sized {
     fn from_env(key: &str, default: Self) -> Self;
 }
 
+#[derive(Clone)]
+pub struct Secret(String);
+
 /// Implementation for simple String types.
 impl FromEnv for String {
     fn from_env(key: &str, default: Self) -> Self {
@@ -25,6 +28,42 @@ impl FromEnv for Option<String> {
             Ok(val) => Some(val),
             Err(_) => default,
         }
+    }
+}
+
+impl Secret {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.len() <= 3 {
+            write!(f, "***")
+        } else {
+            let prefix = &self.0[..3];
+            write!(f, "{}***", prefix)
+        }
+    }
+}
+
+impl serde::Serialize for Secret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Secret(\"{}\")", self)
     }
 }
 
