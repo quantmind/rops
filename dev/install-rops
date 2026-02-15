@@ -73,11 +73,11 @@ if [ -z "${ASSET_ID}" ]; then
   exit 1
 fi
 
-INSTALL_DIR="$HOME/bin"
+ROPS_INSTALL_DIR="${ROPS_INSTALL_DIR:-$HOME/bin}"
 
-# Create the ~/bin directory if it doesn't exist
-mkdir -p "$INSTALL_DIR"
-EXECUTABLE_PATH="${INSTALL_DIR}/rops"
+# Create the install directory if it doesn't exist
+mkdir -p "$ROPS_INSTALL_DIR"
+EXECUTABLE_PATH="${ROPS_INSTALL_DIR}/rops"
 
 ASSET_URL="https://api.github.com/repos/quantmind/rops/releases/assets/${ASSET_ID}"
 echo "Download rops executable from ${ASSET_URL}"
