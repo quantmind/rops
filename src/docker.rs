@@ -37,7 +37,6 @@ fn _default_docker_git_sha_arg() -> Option<String> {
     get_default_from_env("DOCKER_GIT_SHA_ARG", None)
 }
 
-
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum DockerCommand {
     /// Build a new Docker image
@@ -58,7 +57,7 @@ pub enum DockerCommand {
     Push {
         /// Image name
         name: String,
-        /// Architecture
+        /// Add architecture suffix to image tag (e.g. -amd64, -arm64)
         #[arg(long, action = clap::ArgAction::SetTrue)]
         arch: bool,
     },
@@ -94,6 +93,8 @@ impl DockerCommand {
                     .arg("build")
                     .arg("-f")
                     .arg(&dockerfile)
+                    .arg("--platform")
+                    .arg(settings.system.to_string())
                     .arg("-t")
                     .arg(&image_name);
 

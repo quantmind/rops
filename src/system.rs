@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{process::Command};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CurrentSystem {
@@ -16,6 +16,13 @@ impl Default for CurrentSystem {
             arch,
             arch_variant,
         }
+    }
+}
+
+impl std::fmt::Display for CurrentSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.os, self.arch)?;
+        Ok(())
     }
 }
 
