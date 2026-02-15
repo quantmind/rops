@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{process::Command};
+use std::process::Command;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CurrentSystem {

@@ -115,11 +115,11 @@ impl StreamCommand {
         let stderr_thread = std::thread::spawn(move || {
             let mut error_lines = 0;
             for line in stderr.lines().map_while(Result::ok) {
-                if let Some(ref skip_error) = maybe_skip_error {
-                    if line.contains(skip_error) {
-                        log::debug!("skipping error: {}", line);
-                        continue;
-                    }
+                if let Some(ref skip_error) = maybe_skip_error
+                    && line.contains(skip_error)
+                {
+                    log::debug!("skipping error: {}", line);
+                    continue;
                 }
                 log::warn!("{}", line);
                 error_lines += 1;

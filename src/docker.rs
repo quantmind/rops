@@ -146,17 +146,9 @@ impl DockerCommand {
                 let manifest_tag = self.get_push_tag(name, false, settings);
                 let amd64_tag = format!("{}-amd64", manifest_tag);
                 let arm64_tag = format!("{}-arm64", manifest_tag);
-                self.push_manifest(
-                    &manifest_tag,
-                    &amd64_tag,
-                    &arm64_tag,
-                )?;
+                self.push_manifest(&manifest_tag, &amd64_tag, &arm64_tag)?;
                 if let Some(latest_tag) = self.get_latest_tag(name, settings) {
-                    self.push_manifest(
-                        &latest_tag,
-                        &amd64_tag,
-                        &arm64_tag,
-                    )?;
+                    self.push_manifest(&latest_tag, &amd64_tag, &arm64_tag)?;
                 }
                 Ok(())
             }

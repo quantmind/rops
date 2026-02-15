@@ -85,12 +85,12 @@ impl GitSettings {
             .arg("--short")
             .output();
 
-        if let Ok(output) = output {
-            if output.status.success() {
-                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !branch.is_empty() {
-                    return branch;
-                }
+        if let Ok(output) = output
+            && output.status.success()
+        {
+            let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !branch.is_empty() {
+                return branch;
             }
         }
 
@@ -102,17 +102,17 @@ impl GitSettings {
             .arg("HEAD")
             .output();
 
-        if let Ok(output) = output {
-            if output.status.success() {
-                let branch_output = String::from_utf8_lossy(&output.stdout);
-                if let Some(branch_line) = branch_output.lines().nth(1) {
-                    let branch = branch_line
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string();
-                    return branch.trim_start_matches("remotes/origin/").to_string();
-                }
+        if let Ok(output) = output
+            && output.status.success()
+        {
+            let branch_output = String::from_utf8_lossy(&output.stdout);
+            if let Some(branch_line) = branch_output.lines().nth(1) {
+                let branch = branch_line
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                return branch.trim_start_matches("remotes/origin/").to_string();
             }
         }
 
@@ -201,29 +201,30 @@ impl GithubDownloadRelease {
         for arch in [
             Some(&settings.system.arch),
             settings.system.arch_variant.as_ref(),
-        ] {
-            if let Some(arch) = arch {
-                let file_name = self.get_file_name(settings, &release, arch);
-                file_names.push(file_name.clone());
-                if let Some(download_url) = &self.download_url {
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let file_name = self.get_file_name(settings, &release, arch);
+            file_names.push(file_name.clone());
+            if let Some(download_url) = &self.download_url {
+                return Ok(Asset {
+                    url: format!("{download_url}/{file_name}"),
+                    name: file_name,
+                    version: release.tag_name.clone(),
+                });
+            } else {
+                // Find the asset matching the current architecture
+                if let Some(asset) = release
+                    .assets
+                    .iter()
+                    .find(|a| a.name.to_lowercase() == file_name)
+                {
                     return Ok(Asset {
-                        url: format!("{download_url}/{file_name}"),
-                        name: file_name,
+                        url: asset.url.clone(),
+                        name: asset.name.clone(),
                         version: release.tag_name.clone(),
                     });
-                } else {
-                    // Find the asset matching the current architecture
-                    if let Some(asset) = release
-                        .assets
-                        .iter()
-                        .find(|a| a.name.to_lowercase() == file_name)
-                    {
-                        return Ok(Asset {
-                            url: asset.url.clone(),
-                            name: asset.name.clone(),
-                            version: release.tag_name.clone(),
-                        });
-                    }
                 }
             }
         }
@@ -243,7 +244,12 @@ impl GithubDownloadRelease {
     pub fn download(&self, settings: &Settings) -> RopsResult<Asset> {
         let asset = self.get_asset(settings)?;
 
-        log::info!("Download version {} - {} from {}", asset.version, asset.name, asset.url);
+        log::info!(
+            "Download version {} - {} from {}",
+            asset.version,
+            asset.name,
+            asset.url
+        );
 
         // Download the binary using the asset's API URL
         let mut response = self
