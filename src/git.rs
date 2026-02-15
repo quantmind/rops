@@ -140,19 +140,15 @@ impl GitSettings {
             )))
         }
     }
-
-    pub fn release_downloader(&self, repo: &str, file_name: &str) -> GithubDownloadRelease {
-        GithubDownloadRelease::new(repo, file_name, self.github_token.clone())
-    }
 }
 
 impl GithubDownloadRelease {
-    pub fn new(repo: &str, file_name: &str, token: Option<Secret>) -> Self {
+    pub fn new(repo: &str, file_name: &str) -> Self {
         Self {
             repo: repo.to_string(),
             file_name: file_name.to_string(),
             client: Client::new(),
-            token,
+            token: GitSettings::get_github_token(),
             version: None,
             download_url: None,
         }

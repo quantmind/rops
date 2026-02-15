@@ -1,7 +1,7 @@
 use super::settings::Settings;
 use crate::{
     error::{RopsError, RopsResult},
-    git::{GitSettings, GithubDownloadRelease},
+    git::GithubDownloadRelease,
     utils,
 };
 use std::collections::HashMap;
@@ -70,7 +70,6 @@ impl Default for Tools {
                         GithubDownloadRelease::new(
                             "helm/helm",
                             "helm-{version}-{os}-{arch}.tar.gz",
-                            GitSettings::get_github_token(),
                         )
                         .with_download_url("https://get.helm.sh"),
                     ),
@@ -81,7 +80,6 @@ impl Default for Tools {
                     InstallMethod::GithubDownload(GithubDownloadRelease::new(
                         "derailed/k9s",
                         "k9s_{os}_{arch}.tar.gz",
-                        GitSettings::get_github_token(),
                     )),
                 ),
                 ThirdPartyTool::new(
@@ -90,7 +88,6 @@ impl Default for Tools {
                     InstallMethod::GithubDownload(GithubDownloadRelease::new(
                         "tamasfe/taplo",
                         "taplo-{os}-{arch}.gz",
-                        GitSettings::get_github_token(),
                     )),
                 ),
                 ThirdPartyTool::new(
@@ -99,7 +96,6 @@ impl Default for Tools {
                     InstallMethod::GithubDownload(GithubDownloadRelease::new(
                         "getsops/sops",
                         "sops-{version}.{os}.{arch}",
-                        GitSettings::get_github_token(),
                     )),
                 ),
             ]
