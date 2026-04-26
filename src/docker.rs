@@ -89,7 +89,6 @@ impl DockerCommand {
                 // Disable DOCKER_BUILDKIT to avoid manifest list creation with attestations
                 let mut command = Command::new("docker");
                 command
-                    .env("DOCKER_BUILDKIT", "0") // Disable BuildKit to avoid attestations
                     .arg("build")
                     .arg("-f")
                     .arg(&dockerfile)
