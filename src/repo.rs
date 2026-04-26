@@ -51,34 +51,16 @@ impl RepoCommand {
                 RopsError::TomlError(format!("Failed to read TOML file '{}': {}", toml_file, err))
             })?;
 
-            // Parse the TOML file
-            let mut lines: Vec<String> = content.lines().map(String::from).collect();
-            let mut updated = false;
-
-            // Update the version field in the `[package]` or `[project]` section
-            let mut in_target_section = false;
-            for line in &mut lines {
-                let trimmed = line.trim();
-                if trimmed.starts_with("[") && trimmed.ends_with("]") {
-                    in_target_section = trimmed == "[package]" || trimmed == "[project]";
-                }
-
-                if in_target_section && trimmed.starts_with("version") {
-                    *line = format!("version = \"{}\"", parsed_version);
-                    updated = true;
-                    break;
-                }
-            }
-
-            if !updated {
-                return Err(RopsError::TomlError(format!(
-                    "No 'version' field found in [package] or [project] section of '{}'",
-                    toml_file
-                )));
-            }
+            let updated_content =
+                set_toml_version(&content, &parsed_version.to_string()).map_err(|_| {
+                    RopsError::TomlError(format!(
+                        "No 'version' field found in [package], [project], or [workspace.package] section of '{}'",
+                        toml_file
+                    ))
+                })?;
 
             // Write the updated content back to the file
-            fs::write(toml_file, lines.join("\n"))
+            fs::write(toml_file, updated_content)
                 .map_err(|err| format!("Failed to write TOML file '{}': {}", toml_file, err))?;
         }
 
@@ -131,5 +113,83 @@ impl RepoCommand {
             )));
         }
         Ok(())
+    }
+}
+
+/// Updates the `version` field inside a `[package]`, `[project]`, or
+/// `[workspace.package]` section of TOML source text.  Returns the modified
+/// content on success, or `Err(())` if no matching version line was found.
+pub fn set_toml_version(content: &str, new_version: &str) -> Result<String, ()> {
+    let mut lines: Vec<String> = content.lines().map(String::from).collect();
+    let mut in_target_section = false;
+    let mut updated = false;
+
+    for line in &mut lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_target_section =
+                trimmed == "[package]" || trimmed == "[project]" || trimmed == "[workspace.package]";
+        }
+        if in_target_section && trimmed.starts_with("version") {
+            *line = format!("version = \"{}\"", new_version);
+            updated = true;
+            break;
+        }
+    }
+
+    if updated {
+        Ok(lines.join("\n"))
+    } else {
+        Err(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::set_toml_version;
+
+    fn make_toml(section: &str, version: &str) -> String {
+        format!("[{}]\nname = \"my-crate\"\nversion = \"{}\"\n", section, version)
+    }
+
+    #[test]
+    fn updates_package_section() {
+        let input = make_toml("package", "0.1.0");
+        let result = set_toml_version(&input, "1.2.3").unwrap();
+        assert!(result.contains("version = \"1.2.3\""));
+    }
+
+    #[test]
+    fn updates_project_section() {
+        let input = make_toml("project", "0.1.0");
+        let result = set_toml_version(&input, "2.0.0").unwrap();
+        assert!(result.contains("version = \"2.0.0\""));
+    }
+
+    #[test]
+    fn updates_workspace_package_section() {
+        let input = make_toml("workspace.package", "0.1.0");
+        let result = set_toml_version(&input, "3.4.5").unwrap();
+        assert!(result.contains("version = \"3.4.5\""));
+    }
+
+    #[test]
+    fn ignores_version_outside_target_section() {
+        let input = "[dependencies]\nfoo = { version = \"1.0\" }\n\n[package]\nversion = \"0.1.0\"\n";
+        let result = set_toml_version(input, "9.9.9").unwrap();
+        assert!(result.contains("[package]\nversion = \"9.9.9\""));
+        assert!(result.contains("foo = { version = \"1.0\" }"));
+    }
+
+    #[test]
+    fn returns_err_when_no_version_found() {
+        let input = "[package]\nname = \"my-crate\"\n";
+        assert!(set_toml_version(input, "1.0.0").is_err());
+    }
+
+    #[test]
+    fn returns_err_for_unknown_section() {
+        let input = "[lib]\nversion = \"0.1.0\"\n";
+        assert!(set_toml_version(input, "1.0.0").is_err());
     }
 }
