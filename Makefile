@@ -20,7 +20,7 @@ tag:				## Tag current version (from Cargo.toml) and push
 	@read -p "Tagging with v$(VERSION), are you sure? [Y/n] " ans; \
 	ans=$${ans:-Y}; \
 	if [ "$$ans" = "Y" ] || [ "$$ans" = "y" ]; then \
-		git tag v$(VERSION) && git push origin v$(VERSION); \
+		git tag -a v$(VERSION) -m "v$(VERSION)" && git push origin v$(VERSION); \
 	else \
 		echo "Aborted."; \
 	fi
