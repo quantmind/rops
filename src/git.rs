@@ -28,6 +28,8 @@ pub struct GithubDownloadRelease {
     pub version: Option<String>,
     /// A different download url
     pub download_url: Option<String>,
+    /// Maps a release tag to the version used in asset file names
+    pub version_fn: Option<fn(&str) -> String>,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +153,7 @@ impl GithubDownloadRelease {
             token: GitSettings::get_github_token(),
             version: None,
             download_url: None,
+            version_fn: None,
         }
     }
 
@@ -162,6 +165,20 @@ impl GithubDownloadRelease {
     pub fn with_download_url<S: Into<String>>(mut self, download_url: S) -> Self {
         self.download_url = Some(download_url.into());
         self
+    }
+
+    pub fn with_version_fn(mut self, version_fn: fn(&str) -> String) -> Self {
+        self.version_fn = Some(version_fn);
+        self
+    }
+
+    /// The version used in asset file names. Without a callback the release tag
+    /// is used as is.
+    pub fn get_version(&self, tag: &str) -> String {
+        match self.version_fn {
+            Some(version_fn) => version_fn(tag),
+            None => tag.to_string(),
+        }
     }
 
     pub fn request(&self, url: String) -> reqwest::blocking::RequestBuilder {
@@ -237,7 +254,7 @@ impl GithubDownloadRelease {
 
     pub fn get_file_name(&self, settings: &Settings, release: &Release, arch: &str) -> String {
         self.file_name
-            .replace("{version}", &release.tag_name)
+            .replace("{version}", &self.get_version(&release.tag_name))
             .replace("{os}", &settings.system.os)
             .replace("{arch}", arch)
     }
@@ -269,5 +286,25 @@ impl GithubDownloadRelease {
             .copy_to(&mut std::fs::File::create(&asset.name)?)
             .map_err(|err| RopsError::Error(err.to_string()))?;
         Ok(asset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GithubDownloadRelease;
+
+    fn release() -> GithubDownloadRelease {
+        GithubDownloadRelease::new("owner/repo", "tool-{version}-{os}-{arch}.tar.gz")
+    }
+
+    #[test]
+    fn version_is_the_tag_without_a_callback() {
+        assert_eq!(release().get_version("v3.16.1"), "v3.16.1");
+    }
+
+    #[test]
+    fn version_is_mapped_by_the_callback() {
+        let release = release().with_version_fn(|tag| tag.replace("release-", ""));
+        assert_eq!(release.get_version("release-3.16.1"), "3.16.1");
     }
 }

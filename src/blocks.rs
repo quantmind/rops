@@ -3,8 +3,12 @@ use crate::{
     settings::Settings,
     utils::as_true,
 };
-use reqwest::{Method, blocking::Client};
+use reqwest::{
+    Method,
+    blocking::{Client, Response},
+};
 use serde::{Deserialize, Serialize};
+use std::cell::OnceCell;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockSettings {
@@ -12,6 +16,13 @@ pub struct BlockSettings {
     pub api_url: String,
     #[serde(default = "Metablock::get_default_space")]
     pub default_space: String,
+    /// Organization the metablock API calls act within, by name or by id
+    ///
+    /// It is the organization owning the spaces the blocks belong to, which is
+    /// not necessarily named after them: the `quantmind` space is owned by the
+    /// `metablock` organization.
+    #[serde(default = "Metablock::get_default_org")]
+    pub org: String,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -49,6 +60,12 @@ pub struct Plugin {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct Org {
+    pub id: String,
+    pub short_name: String,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Space {
     pub id: String,
     pub name: String,
@@ -67,7 +84,10 @@ pub struct Block {
 pub struct Metablock {
     pub api_url: String,
     pub api_token: String,
+    /// Organization by name or by id, resolved to an id on first use
+    pub org: String,
     pub client: Client,
+    org_id: OnceCell<String>,
 }
 
 impl Default for BlockSettings {
@@ -75,6 +95,7 @@ impl Default for BlockSettings {
         Self {
             api_url: Metablock::get_default_api_url(),
             default_space: Metablock::get_default_space(),
+            org: Metablock::get_default_org(),
         }
     }
 }
@@ -86,7 +107,7 @@ impl BlockSettings {
                 "METABLOCK_API_TOKEN not set - add it to your env or the .env file".into(),
             )
         })?;
-        Ok(Metablock::new(&self.api_url, api_token))
+        Ok(Metablock::new(&self.api_url, api_token, &self.org))
     }
 }
 
@@ -100,19 +121,66 @@ impl Metablock {
         std::env::var("METABLOCK_SPACE").unwrap_or_else(|_| "metablock".to_string())
     }
 
-    pub fn new<S1: Into<String>, S2: Into<String>>(api_url: S1, api_token: S2) -> Self {
+    pub fn get_default_org() -> String {
+        std::env::var("METABLOCK_ORG").unwrap_or_else(|_| "metablock".to_string())
+    }
+
+    pub fn new<S1: Into<String>, S2: Into<String>, S3: Into<String>>(
+        api_url: S1,
+        api_token: S2,
+        org: S3,
+    ) -> Self {
         Self {
             api_url: api_url.into(),
             api_token: api_token.into(),
+            org: org.into(),
             client: Client::new(),
+            org_id: OnceCell::new(),
         }
     }
 
-    pub fn request(&self, method: Method, url: String) -> reqwest::blocking::RequestBuilder {
+    /// A request authenticated with the API key only
+    ///
+    /// Used for the endpoints resolving the organization itself, which cannot
+    /// require the organization header.
+    fn key_request(&self, method: Method, url: String) -> reqwest::blocking::RequestBuilder {
         self.client
             .request(method, url)
             .header("User-Agent", "quantmind/rops")
             .header("x-metablock-api-key", &self.api_token)
+    }
+
+    /// A request acting within the configured organization
+    ///
+    /// The API resolves the organization from this header and answers `422`
+    /// when it is missing, so every block endpoint needs it.
+    pub fn request(
+        &self,
+        method: Method,
+        url: String,
+    ) -> RopsResult<reqwest::blocking::RequestBuilder> {
+        Ok(self
+            .key_request(method, url)
+            .header("x-metablock-org-id", self.org_id()?))
+    }
+
+    /// The id of the configured organization, fetched once and then cached
+    ///
+    /// The header only matches organizations by id, so a name from the
+    /// configuration has to be resolved first.
+    fn org_id(&self) -> RopsResult<&str> {
+        if let Some(org_id) = self.org_id.get() {
+            return Ok(org_id);
+        }
+        let url = format!("{}/v1/orgs/{}", self.api_url, self.org);
+        log::info!("Fetching organization information from {url}");
+        let org: Org = check(self.key_request(Method::GET, url).send()?)?.json()?;
+        log::info!(
+            "Acting within organization '{}' - {}",
+            org.short_name,
+            org.id
+        );
+        Ok(self.org_id.get_or_init(|| org.id))
     }
 
     pub fn apply(&self, settings: &Settings, block_config: &BlockConfig) -> RopsResult<()> {
@@ -144,7 +212,7 @@ impl Metablock {
             self.api_url
         );
         log::info!("Fetching block information from {url}");
-        let blocks: Vec<Block> = self.request(Method::GET, url).send()?.json()?;
+        let blocks: Vec<Block> = check(self.request(Method::GET, url)?.send()?)?.json()?;
         if blocks.is_empty() {
             Ok(None)
         } else {
@@ -154,27 +222,68 @@ impl Metablock {
 
     pub fn create_block(&self, space_name: &str, block_config: &BlockConfig) -> RopsResult<Block> {
         let url = format!("{}/v1/spaces/{space_name}/blocks", self.api_url);
-        let response = self.request(Method::POST, url).json(block_config).send()?;
-        if response.status().is_client_error() {
-            return Err(RopsError::Error(format!(
-                "Failed to create block - status {}: {}",
-                response.status(),
-                response.text()?
-            )));
-        }
-        Ok(response.json()?)
+        let response = self.request(Method::POST, url)?.json(block_config).send()?;
+        Ok(check(response)?.json()?)
     }
 
     pub fn update_block(&self, block_id: &str, block_config: &BlockConfig) -> RopsResult<Block> {
         let url = format!("{}/v1/blocks/{block_id}", self.api_url);
-        let response = self.request(Method::PATCH, url).json(block_config).send()?;
-        if response.status().is_client_error() {
-            return Err(RopsError::Error(format!(
-                "Failed to update block - status {}: {}",
-                response.status(),
-                response.text()?
-            )));
-        }
-        Ok(response.json()?)
+        let response = self
+            .request(Method::PATCH, url)?
+            .json(block_config)
+            .send()?;
+        Ok(check(response)?.json()?)
+    }
+}
+
+/// Report an error response by its status and body
+///
+/// Decoding an error response would fail with reqwest's opaque "error decoding
+/// response body", losing both the status and the message from the API.
+fn check(response: Response) -> RopsResult<Response> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+    let url = response.url().to_string();
+    Err(RopsError::Error(format!(
+        "{status} from {url}: {}",
+        response.text()?
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Block, Org};
+
+    // Responses from the live API, the fields the structs do not use removed
+
+    #[test]
+    fn org_is_deserialized() {
+        let org: Org = serde_json::from_str(
+            r#"{"email":"admin@metablock.io","short_name":"metablock","full_name":"",
+                "status":"created","id":"63b97d659eb7487c9cb287d68fcbb38a",
+                "created":"2025-04-10T09:55:39.494335Z","additional_info":{}}"#,
+        )
+        .unwrap();
+        assert_eq!(org.short_name, "metablock");
+        assert_eq!(org.id, "63b97d659eb7487c9cb287d68fcbb38a");
+    }
+
+    #[test]
+    fn block_list_is_deserialized() {
+        let blocks: Vec<Block> = serde_json::from_str(
+            r#"[{"id":"2a9a109290da48d9ae611793d812e5e6",
+                 "service_id":"b66516e371dd488d909cb55cb41cfcb6","name":"code",
+                 "space":{"cdn":"","hosted":true,"name":"quantmind",
+                          "domain":"quantmind.com","id":"1904c2c1b2304672a98df556d4773f27",
+                          "org_id":"63b97d659eb7487c9cb287d68fcbb38a","org_name":""},
+                 "full_name":"code-quantmind","html":false,"root":false,"acme":true,
+                 "domain":"code.quantmind.com","url":"https://code.quantmind.com"}]"#,
+        )
+        .unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].full_name, "code-quantmind");
+        assert_eq!(blocks[0].space.name, "quantmind");
     }
 }
