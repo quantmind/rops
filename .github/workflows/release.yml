@@ -1,6 +1,6 @@
 name: release
 
-# Triggered by `v*` tags (push one with `make tag`). Builds the binaries via
+# Triggered by `v*` tags (push one with `make release`). Builds the binaries via
 # the build workflow, extracts the matching section from
 # docs/release-notes.md and publishes it as the GitHub Release body with
 # the binaries attached. Re-runs idempotently update an existing release

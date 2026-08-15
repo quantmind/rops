@@ -22,7 +22,7 @@ the binaries attached.
    dash, no title after the version). The release workflow fails if this
    section is missing.
 3. Commit and merge to `main`; let the `build` workflow pass.
-4. From `main`, run `make tag` — it reads the version from `Cargo.toml`, asks
+4. From `main`, run `make release` — it reads the version from `Cargo.toml`, asks
    for confirmation, then creates an annotated `vX.Y.Z` tag and pushes it. The
    `release` workflow takes it from there.
 
