@@ -25,6 +25,16 @@ struct Tools {
     tools: HashMap<String, ThirdPartyTool>, // tool name and version
 }
 
+/// Drops everything before the first digit of a release tag, so that a tag such
+/// as `desktop-v0.5.7` matches an asset named after the bare `0.5.7`. Tags
+/// without a digit are left alone.
+fn strip_tag_prefix(tag: &str) -> String {
+    match tag.find(|c: char| c.is_ascii_digit()) {
+        Some(index) => tag[index..].to_string(),
+        None => tag.to_string(),
+    }
+}
+
 enum InstallMethod {
     GithubDownload(GithubDownloadRelease),
 }
@@ -63,6 +73,14 @@ impl Default for Tools {
     fn default() -> Self {
         Self {
             tools: vec![
+                ThirdPartyTool::new(
+                    "buzz",
+                    "A workspace where humans and agents build together",
+                    InstallMethod::GithubDownload(
+                        GithubDownloadRelease::new("block/buzz", "buzz_{version}_{arch}.appimage")
+                            .with_version_fn(strip_tag_prefix),
+                    ),
+                ),
                 ThirdPartyTool::new(
                     "helm",
                     "The Kubernetes Package Manager",
@@ -169,5 +187,26 @@ impl ThirdPartyTool {
             })?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_tag_prefix;
+
+    #[test]
+    fn strips_a_prefixed_tag() {
+        assert_eq!(strip_tag_prefix("desktop-v0.5.7"), "0.5.7");
+        assert_eq!(strip_tag_prefix("v3.16.1"), "3.16.1");
+    }
+
+    #[test]
+    fn leaves_a_bare_version_alone() {
+        assert_eq!(strip_tag_prefix("0.5.7"), "0.5.7");
+    }
+
+    #[test]
+    fn leaves_a_tag_without_digits_alone() {
+        assert_eq!(strip_tag_prefix("sprig-latest"), "sprig-latest");
     }
 }
