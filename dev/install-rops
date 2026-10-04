@@ -43,14 +43,15 @@ if [ -n "${GITHUB_TOKEN}" ]; then
   AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
 fi
 
-# Fetch the release JSON from GitHub API
+# Fetch the release JSON from GitHub API, retrying transient errors and
+# printing the reason of a failed request
 if [ -n "${AUTH_HEADER}" ]; then
-  RELEASE_JSON=$(curl -s \
+  RELEASE_JSON=$(curl -sS --fail --retry 3 \
       -H "Accept: application/vnd.github+json" \
       -H "${AUTH_HEADER}" \
       https://api.github.com/repos/quantmind/rops/releases/latest)
 else
-  RELEASE_JSON=$(curl -s \
+  RELEASE_JSON=$(curl -sS --fail --retry 3 \
       -H "Accept: application/vnd.github+json" \
       https://api.github.com/repos/quantmind/rops/releases/latest)
 fi
