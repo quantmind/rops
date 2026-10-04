@@ -14,8 +14,8 @@ lint:				## Run linters and fix issues
 lint-check:			## Run linters
 	@./dev/lint-rs
 
-.PHONY: tag
-tag:				## Tag current version (from Cargo.toml) and push
+.PHONY: release
+release:			## Tag current version (from Cargo.toml) and push
 	$(eval VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/'))
 	@read -p "Tagging with v$(VERSION), are you sure? [Y/n] " ans; \
 	ans=$${ans:-Y}; \

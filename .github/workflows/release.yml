@@ -1,0 +1,54 @@
+name: release
+
+# Triggered by `v*` tags (push one with `make release`). Builds the binaries via
+# the build workflow, extracts the matching section from
+# docs/release-notes.md and publishes it as the GitHub Release body with
+# the binaries attached. Re-runs idempotently update an existing release
+# rather than failing.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+      - name: Rename artifacts
+        run: |
+          mv rops-amd64-/rops rops-amd64
+          mv rops-arm64-/rops rops-arm64
+      - name: Extract release notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          awk -v tag="## ${TAG}" '
+            $0 == tag { in_section = 1; next }
+            /^## / && in_section { exit }
+            in_section { print }
+          ' docs/release-notes.md > /tmp/notes.md
+          if [ ! -s /tmp/notes.md ]; then
+            echo "No section '## ${TAG}' found in docs/release-notes.md" >&2
+            exit 1
+          fi
+          echo "--- extracted notes for ${TAG} ---"
+          cat /tmp/notes.md
+      - name: Publish GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "rops-amd64,rops-arm64"
+          allowUpdates: true
+          bodyFile: /tmp/notes.md

@@ -8,7 +8,6 @@ use reqwest::{
     blocking::{Client, Response},
 };
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockSettings {
@@ -84,10 +83,9 @@ pub struct Block {
 pub struct Metablock {
     pub api_url: String,
     pub api_token: String,
-    /// Organization by name or by id, resolved to an id on first use
-    pub org: String,
+    /// Id of the organization the requests act within
+    pub org_id: String,
     pub client: Client,
-    org_id: OnceCell<String>,
 }
 
 impl Default for BlockSettings {
@@ -107,7 +105,7 @@ impl BlockSettings {
                 "METABLOCK_API_TOKEN not set - add it to your env or the .env file".into(),
             )
         })?;
-        Ok(Metablock::new(&self.api_url, api_token, &self.org))
+        Metablock::new(&self.api_url, api_token).with_org(&self.org)
     }
 }
 
@@ -125,18 +123,30 @@ impl Metablock {
         std::env::var("METABLOCK_ORG").unwrap_or_else(|_| "metablock".to_string())
     }
 
-    pub fn new<S1: Into<String>, S2: Into<String>, S3: Into<String>>(
-        api_url: S1,
-        api_token: S2,
-        org: S3,
-    ) -> Self {
+    fn new<S1: Into<String>, S2: Into<String>>(api_url: S1, api_token: S2) -> Self {
         Self {
             api_url: api_url.into(),
             api_token: api_token.into(),
-            org: org.into(),
+            org_id: String::new(),
             client: Client::new(),
-            org_id: OnceCell::new(),
         }
+    }
+
+    /// Resolve the organization the requests act within
+    ///
+    /// The header only matches organizations by id, so an organization named
+    /// in the configuration has to be looked up first.
+    fn with_org(mut self, org: &str) -> RopsResult<Self> {
+        let url = format!("{}/v1/orgs/{org}", self.api_url);
+        log::info!("Fetching organization information from {url}");
+        let org: Org = check(self.key_request(Method::GET, url).send()?)?.json()?;
+        log::info!(
+            "Acting within organization '{}' - {}",
+            org.short_name,
+            org.id
+        );
+        self.org_id = org.id;
+        Ok(self)
     }
 
     /// A request authenticated with the API key only
@@ -150,37 +160,13 @@ impl Metablock {
             .header("x-metablock-api-key", &self.api_token)
     }
 
-    /// A request acting within the configured organization
+    /// A request acting within the resolved organization
     ///
     /// The API resolves the organization from this header and answers `422`
     /// when it is missing, so every block endpoint needs it.
-    pub fn request(
-        &self,
-        method: Method,
-        url: String,
-    ) -> RopsResult<reqwest::blocking::RequestBuilder> {
-        Ok(self
-            .key_request(method, url)
-            .header("x-metablock-org-id", self.org_id()?))
-    }
-
-    /// The id of the configured organization, fetched once and then cached
-    ///
-    /// The header only matches organizations by id, so a name from the
-    /// configuration has to be resolved first.
-    fn org_id(&self) -> RopsResult<&str> {
-        if let Some(org_id) = self.org_id.get() {
-            return Ok(org_id);
-        }
-        let url = format!("{}/v1/orgs/{}", self.api_url, self.org);
-        log::info!("Fetching organization information from {url}");
-        let org: Org = check(self.key_request(Method::GET, url).send()?)?.json()?;
-        log::info!(
-            "Acting within organization '{}' - {}",
-            org.short_name,
-            org.id
-        );
-        Ok(self.org_id.get_or_init(|| org.id))
+    pub fn request(&self, method: Method, url: String) -> reqwest::blocking::RequestBuilder {
+        self.key_request(method, url)
+            .header("x-metablock-org-id", &self.org_id)
     }
 
     pub fn apply(&self, settings: &Settings, block_config: &BlockConfig) -> RopsResult<()> {
@@ -212,7 +198,7 @@ impl Metablock {
             self.api_url
         );
         log::info!("Fetching block information from {url}");
-        let blocks: Vec<Block> = check(self.request(Method::GET, url)?.send()?)?.json()?;
+        let blocks: Vec<Block> = check(self.request(Method::GET, url).send()?)?.json()?;
         if blocks.is_empty() {
             Ok(None)
         } else {
@@ -222,16 +208,13 @@ impl Metablock {
 
     pub fn create_block(&self, space_name: &str, block_config: &BlockConfig) -> RopsResult<Block> {
         let url = format!("{}/v1/spaces/{space_name}/blocks", self.api_url);
-        let response = self.request(Method::POST, url)?.json(block_config).send()?;
+        let response = self.request(Method::POST, url).json(block_config).send()?;
         Ok(check(response)?.json()?)
     }
 
     pub fn update_block(&self, block_id: &str, block_config: &BlockConfig) -> RopsResult<Block> {
         let url = format!("{}/v1/blocks/{block_id}", self.api_url);
-        let response = self
-            .request(Method::PATCH, url)?
-            .json(block_config)
-            .send()?;
+        let response = self.request(Method::PATCH, url).json(block_config).send()?;
         Ok(check(response)?.json()?)
     }
 }
