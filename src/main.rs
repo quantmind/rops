@@ -17,7 +17,11 @@ use tracing_subscriber::{EnvFilter, prelude::*};
 #[command(author, version, about, long_about = None)] // Command config
 enum CliArgs {
     /// Show settings
-    Settings,
+    Settings {
+        /// Output raw JSON instead of a table
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        raw: bool,
+    },
     /// Run a Docker command
     #[command(subcommand)]
     Docker(docker::DockerCommand),
@@ -58,13 +62,17 @@ fn run_app() -> error::RopsResult<()> {
 
     let app = CliArgs::parse();
     match app {
-        CliArgs::Settings => match serde_json::to_string_pretty(&settings) {
+        CliArgs::Settings { raw: true } => match serde_json::to_string_pretty(&settings) {
             Ok(pretty_settings) => {
                 println!("{}", pretty_settings);
                 Ok(())
             }
             Err(err) => Err(format!("Failed to serialize settings: {}", err).into()),
         },
+        CliArgs::Settings { raw: false } => {
+            println!("{}", settings.table()?);
+            Ok(())
+        }
         CliArgs::Docker(docker) => docker.run(&settings),
         CliArgs::Charts(charts) => charts.run(&settings),
         CliArgs::Repo(repo) => repo.run(&settings),

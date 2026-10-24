@@ -127,8 +127,9 @@ pub fn set_toml_version(content: &str, new_version: &str) -> Result<String, ()> 
     for line in &mut lines {
         let trimmed = line.trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_target_section =
-                trimmed == "[package]" || trimmed == "[project]" || trimmed == "[workspace.package]";
+            in_target_section = trimmed == "[package]"
+                || trimmed == "[project]"
+                || trimmed == "[workspace.package]";
         }
         if in_target_section && trimmed.starts_with("version") {
             *line = format!("version = \"{}\"", new_version);
@@ -149,7 +150,10 @@ mod tests {
     use super::set_toml_version;
 
     fn make_toml(section: &str, version: &str) -> String {
-        format!("[{}]\nname = \"my-crate\"\nversion = \"{}\"\n", section, version)
+        format!(
+            "[{}]\nname = \"my-crate\"\nversion = \"{}\"\n",
+            section, version
+        )
     }
 
     #[test]
@@ -175,7 +179,8 @@ mod tests {
 
     #[test]
     fn ignores_version_outside_target_section() {
-        let input = "[dependencies]\nfoo = { version = \"1.0\" }\n\n[package]\nversion = \"0.1.0\"\n";
+        let input =
+            "[dependencies]\nfoo = { version = \"1.0\" }\n\n[package]\nversion = \"0.1.0\"\n";
         let result = set_toml_version(input, "9.9.9").unwrap();
         assert!(result.contains("[package]\nversion = \"9.9.9\""));
         assert!(result.contains("foo = { version = \"1.0\" }"));

@@ -10,7 +10,11 @@ use std::collections::HashMap;
 pub enum ToolsCommand {
     /// List all configured third party tools
     #[command(alias = "ls")]
-    List,
+    List {
+        /// Output raw JSON instead of a table
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        raw: bool,
+    },
     /// Update a third party tool
     Update {
         /// The name of the tool to update
@@ -50,11 +54,27 @@ impl ToolsCommand {
     pub fn run(&self, settings: &Settings) -> RopsResult<()> {
         let tools = Tools::default();
         match self {
-            Self::List => {
+            Self::List { raw } => {
                 let mut tool_list: Vec<_> = tools.tools.iter().collect();
                 tool_list.sort_by_key(|(name, _)| *name);
-                for (name, tool) in tool_list {
-                    println!("{}: {}", name, tool.description);
+                if *raw {
+                    let json: serde_json::Map<_, _> = tool_list
+                        .iter()
+                        .map(|(name, tool)| {
+                            let value = serde_json::json!({
+                                "description": tool.description,
+                                "repo": tool.repo(),
+                            });
+                            (name.to_string(), value)
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&json)?);
+                } else {
+                    let mut table = utils::new_table(["Name", "Repo", "Description"]);
+                    for (name, tool) in tool_list {
+                        table.add_row(vec![name.as_str(), tool.repo(), tool.description.as_str()]);
+                    }
+                    println!("{table}");
                 }
                 Ok(())
             }
@@ -130,6 +150,12 @@ impl ThirdPartyTool {
             name: name.to_string(),
             description: description.to_string(),
             method,
+        }
+    }
+
+    fn repo(&self) -> &str {
+        match &self.method {
+            InstallMethod::GithubDownload(g) => g.repo.as_str(),
         }
     }
 
