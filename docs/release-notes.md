@@ -1,5 +1,16 @@
 # Release notes
 
+## v0.6.0
+
+Readable listings and a sturdier installer.
+
+- `rops charts ls`, `rops tools ls` and `rops settings` print a table, with a
+  `--raw` flag for JSON output ([#4](https://github.com/quantmind/rops/pull/4)).
+- The `install-rops` script retries transient GitHub API errors and reports
+  why a request failed ([#3](https://github.com/quantmind/rops/pull/3)).
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.5.6...v0.6.0)
+
 ## v0.5.6
 
 A fix for the metablock block API. Deploying a chart with a `block` section
