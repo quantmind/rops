@@ -224,3 +224,14 @@ pub fn random_base_64(length: usize) -> RopsResult<String> {
     let encoded_string = general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes);
     Ok(encoded_string)
 }
+
+/// Create a table with the standard rops style and the given headers
+pub fn new_table<const N: usize>(headers: [&str; N]) -> comfy_table::Table {
+    use comfy_table::{Attribute, Cell, ContentArrangement, Table, presets::UTF8_FULL};
+    let mut table = Table::new();
+    table
+        .load_style(UTF8_FULL.with_rounded_corners())
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(headers.map(|h| Cell::new(h).add_attribute(Attribute::Bold)));
+    table
+}

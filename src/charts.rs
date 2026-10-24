@@ -3,8 +3,9 @@ use crate::{
     error::{RopsError, RopsResult},
     git::GitSettings,
     settings::Settings,
-    utils::{StreamCommand, as_true},
+    utils::{StreamCommand, as_true, new_table},
 };
+use comfy_table::Table;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::{collections::HashMap, path::Path, process::Command};
@@ -13,7 +14,11 @@ use std::{collections::HashMap, path::Path, process::Command};
 pub enum ChartsCommand {
     /// List all available charts
     #[command(alias = "ls")]
-    List,
+    List {
+        /// Output raw JSON instead of a table
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        raw: bool,
+    },
     /// Update helm plugins
     Update,
     /// Deploy a chart
@@ -107,9 +112,16 @@ impl ChartsCommand {
             &settings.charts.config,
         )?)?;
         match self {
-            Self::List => {
-                let json = serde_json::to_string_pretty(&charts)?;
-                println!("{}", json);
+            Self::List { raw } => {
+                if *raw {
+                    let json = serde_json::to_string_pretty(&charts)?;
+                    println!("{}", json);
+                } else {
+                    println!(
+                        "{}",
+                        charts_table(&charts, &settings.charts.default_namespace)
+                    );
+                }
                 Ok(())
             }
             Self::Update => {
@@ -180,6 +192,32 @@ impl ChartsCommand {
             },
         }
     }
+}
+
+/// Render the charts as a table sorted by name
+fn charts_table(charts: &HashMap<String, Chart>, default_namespace: &str) -> Table {
+    let mut table = new_table([
+        "Name",
+        "Chart",
+        "Alias",
+        "Namespace",
+        "Block",
+        "Description",
+    ]);
+    let mut names: Vec<_> = charts.keys().collect();
+    names.sort();
+    for name in names {
+        let chart = &charts[name];
+        table.add_row(vec![
+            name.as_str(),
+            chart.chart.as_str(),
+            chart.alias.as_deref().unwrap_or("-"),
+            chart.namespace.as_deref().unwrap_or(default_namespace),
+            if chart.block.is_some() { "yes" } else { "no" },
+            chart.description.as_deref().unwrap_or(""),
+        ]);
+    }
+    table
 }
 
 impl ChartsSettings {
