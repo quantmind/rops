@@ -30,6 +30,8 @@ pub struct GithubDownloadRelease {
     pub download_url: Option<String>,
     /// Maps a release tag to the version used in asset file names
     pub version_fn: Option<fn(&str) -> String>,
+    /// Path appended to `download_url`, it defaults to the file name
+    pub download_path: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,6 +156,7 @@ impl GithubDownloadRelease {
             version: None,
             download_url: None,
             version_fn: None,
+            download_path: None,
         }
     }
 
@@ -179,6 +182,11 @@ impl GithubDownloadRelease {
             Some(version_fn) => version_fn(tag),
             None => tag.to_string(),
         }
+    }
+
+    pub fn with_download_path<S: Into<String>>(mut self, download_path: S) -> Self {
+        self.download_path = Some(download_path.into());
+        self
     }
 
     pub fn request(&self, url: String) -> reqwest::blocking::RequestBuilder {
@@ -226,8 +234,12 @@ impl GithubDownloadRelease {
             let file_name = self.get_file_name(settings, &release, arch);
             file_names.push(file_name.clone());
             if let Some(download_url) = &self.download_url {
+                let path = match &self.download_path {
+                    Some(path) => self.render(path, settings, &release, arch),
+                    None => file_name.clone(),
+                };
                 return Ok(Asset {
-                    url: format!("{download_url}/{file_name}"),
+                    url: format!("{download_url}/{path}"),
                     name: file_name,
                     version: release.tag_name.clone(),
                 });
@@ -253,7 +265,12 @@ impl GithubDownloadRelease {
     }
 
     pub fn get_file_name(&self, settings: &Settings, release: &Release, arch: &str) -> String {
-        self.file_name
+        self.render(&self.file_name, settings, release, arch)
+    }
+
+    /// Replace the `{version}`, `{os}` and `{arch}` placeholders in a template
+    fn render(&self, template: &str, settings: &Settings, release: &Release, arch: &str) -> String {
+        template
             .replace("{version}", &self.get_version(&release.tag_name))
             .replace("{os}", &settings.system.os)
             .replace("{arch}", arch)
