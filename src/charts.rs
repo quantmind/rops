@@ -8,7 +8,18 @@ use crate::{
 use comfy_table::Table;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::{collections::HashMap, path::Path, process::Command};
+
+/// The helm-secrets repository, and the release installed on Helm 4.
+const HELM_SECRETS_REPO: &str = "https://github.com/jkroepke/helm-secrets";
+const HELM_SECRETS_VERSION: &str = "4.7.10";
+/// The plugins helm-secrets is split into on Helm 4.
+const HELM_SECRETS_PLUGINS: [&str; 3] = ["secrets", "secrets-getter", "secrets-post-renderer"];
+/// The public key signing the helm-secrets plugins, as a binary keyring:
+/// fingerprint 1F34F95B4F30BC5B06E0D7CC3F619F17002790D8, from
+/// https://github.com/jkroepke.gpg
+const HELM_SECRETS_KEYRING: &[u8] = include_bytes!("keys/helm-secrets.gpg");
 
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum ChartsCommand {
@@ -124,14 +135,7 @@ impl ChartsCommand {
                 }
                 Ok(())
             }
-            Self::Update => {
-                ChartsSettings::install_helm_plugin(
-                    "secrets",
-                    "https://github.com/jkroepke/helm-secrets",
-                    None,
-                )?;
-                Ok(())
-            }
+            Self::Update => ChartsSettings::install_helm_secrets(),
             Self::Deploy {
                 chart,
                 env,
@@ -227,6 +231,94 @@ impl ChartsSettings {
 
     pub fn get_default_namespace() -> String {
         std::env::var("CHARTS_DEFAULT_NAMESPACE").unwrap_or_else(|_| "services".to_string())
+    }
+
+    /// Install the helm-secrets plugin.
+    ///
+    /// Helm 4 only installs signed plugins, and helm-secrets is published for
+    /// it as three signed plugins on its GitHub release. They are verified
+    /// with the public key of the helm-secrets author, which is shipped with
+    /// rops rather than downloaded from the same place as the plugins.
+    /// A plugin already installed at the same version is left as it is, and
+    /// one at another version is replaced. Helm 3 installs the plugin from the
+    /// git repository, as before.
+    pub fn install_helm_secrets() -> RopsResult<()> {
+        if Self::helm_version()?.major < 4 {
+            return Self::install_helm_plugin("secrets", HELM_SECRETS_REPO, None);
+        }
+        let installed = Self::helm_plugins()?;
+        let mut keyring = tempfile::NamedTempFile::new()?;
+        keyring.write_all(HELM_SECRETS_KEYRING)?;
+        for name in HELM_SECRETS_PLUGINS {
+            match installed.get(name) {
+                Some(version) if version == HELM_SECRETS_VERSION => {
+                    log::info!("helm plugin {name} {version} is already installed");
+                    continue;
+                }
+                Some(_) => Self::run_helm(Self::helm(&["plugin", "uninstall", name]))?,
+                None => {}
+            }
+            let url = format!(
+                "{HELM_SECRETS_REPO}/releases/download/v{HELM_SECRETS_VERSION}/{name}-{HELM_SECRETS_VERSION}.tgz"
+            );
+            let mut command = Self::helm(&["plugin", "install", "--keyring"]);
+            command.arg(keyring.path()).arg(url);
+            Self::run_helm(command)?;
+        }
+        Ok(())
+    }
+
+    /// The version of the helm client.
+    fn helm_version() -> RopsResult<semver::Version> {
+        let output = Self::helm_output(&["version", "--template", "{{.Version}}"])?;
+        Ok(semver::Version::parse(
+            output.trim().trim_start_matches('v'),
+        )?)
+    }
+
+    /// The installed helm plugins, by name, with their version.
+    fn helm_plugins() -> RopsResult<HashMap<String, String>> {
+        let output = Self::helm_output(&["plugin", "list"])?;
+        Ok(output
+            .lines()
+            .skip(1)
+            .filter_map(|line| {
+                let mut columns = line.split_whitespace();
+                Some((columns.next()?.to_string(), columns.next()?.to_string()))
+            })
+            .collect())
+    }
+
+    fn helm(args: &[&str]) -> Command {
+        let mut command = Command::new("helm");
+        command.args(args);
+        command
+    }
+
+    /// Run a helm command and return its standard output.
+    fn helm_output(args: &[&str]) -> RopsResult<String> {
+        let output = Self::helm(args).output()?;
+        if !output.status.success() {
+            return Err(RopsError::Error(format!(
+                "helm {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// Run a helm command, streaming its output, and fail if it fails.
+    fn run_helm(command: Command) -> RopsResult<()> {
+        let mut command = StreamCommand::new(command);
+        if command.run()? {
+            Ok(())
+        } else {
+            Err(RopsError::Error(format!(
+                "Failed to run {}",
+                command.format_command()
+            )))
+        }
     }
 
     pub fn install_helm_plugin(name: &str, repo: &str, action: Option<&str>) -> RopsResult<()> {
