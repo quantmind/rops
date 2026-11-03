@@ -1,5 +1,24 @@
 # Release notes
 
+## v0.7.0
+
+Kubernetes tooling and Helm 4 support. `kubectl` can now be installed as a
+managed tool, and `rops charts update` installs the signed helm-secrets
+plugins that Helm 4 requires.
+
+### New features
+
+- `kubectl` is available as a third-party tool, downloaded from the official
+  `dl.k8s.io` release site at the latest Kubernetes version
+  ([#5](https://github.com/quantmind/rops/pull/5)).
+- `rops charts update` installs the latest `secrets`, `secrets-getter` and
+  `secrets-post-renderer` plugins from the helm-secrets GitHub release,
+  verifying their signatures with the helm-secrets author's public key, which
+  is built into rops. Helm 4 only installs signed plugins
+  ([#6](https://github.com/quantmind/rops/pull/6)).
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.6.0...v0.7.0)
+
 ## v0.6.0
 
 Readable listings and a sturdier installer.
