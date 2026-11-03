@@ -1,13 +1,15 @@
 use crate::{
     blocks::BlockConfig,
     error::{RopsError, RopsResult},
-    git::GitSettings,
+    git::{GitSettings, GithubDownloadRelease},
     settings::Settings,
+    tools::strip_tag_prefix,
     utils::{StreamCommand, as_true, new_table},
 };
 use comfy_table::Table;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::{collections::HashMap, path::Path, process::Command};
 
 #[derive(clap::Subcommand, Debug, Clone)]
@@ -124,14 +126,7 @@ impl ChartsCommand {
                 }
                 Ok(())
             }
-            Self::Update => {
-                ChartsSettings::install_helm_plugin(
-                    "secrets",
-                    "https://github.com/jkroepke/helm-secrets",
-                    None,
-                )?;
-                Ok(())
-            }
+            Self::Update => ChartsSettings::install_helm_secrets(settings),
             Self::Deploy {
                 chart,
                 env,
@@ -229,19 +224,43 @@ impl ChartsSettings {
         std::env::var("CHARTS_DEFAULT_NAMESPACE").unwrap_or_else(|_| "services".to_string())
     }
 
-    pub fn install_helm_plugin(name: &str, repo: &str, action: Option<&str>) -> RopsResult<()> {
-        let action = action.unwrap_or("install");
-        let mut command = Command::new("helm");
-        command.arg("plugin").arg(action).arg(repo);
-        if StreamCommand::new(command).run()? {
-            Ok(())
-        } else if action == "install" {
-            Self::install_helm_plugin(name, name, Some("update"))
-        } else {
-            Err(RopsError::Error(format!(
-                "Failed to {action} Helm plugin '{repo}'"
-            )))
+    /// Install the latest helm-secrets plugins.
+    ///
+    /// Helm 4 only installs signed plugins, and helm-secrets is published for
+    /// it as three signed plugins on its GitHub release. They are verified
+    /// with the public key of the helm-secrets author, which is built into
+    /// rops rather than downloaded from the same place as the plugins.
+    pub fn install_helm_secrets(settings: &Settings) -> RopsResult<()> {
+        let tag = GithubDownloadRelease::new("jkroepke/helm-secrets", "secrets-{version}.tgz")
+            .with_version_fn(strip_tag_prefix)
+            .get_asset(settings)?
+            .version;
+        let version = strip_tag_prefix(&tag);
+        // public key of the helm-secrets author, fingerprint
+        // 1F34F95B4F30BC5B06E0D7CC3F619F17002790D8, from https://github.com/jkroepke.gpg
+        let mut keyring = tempfile::NamedTempFile::new()?;
+        keyring.write_all(include_bytes!("keys/helm-secrets.gpg"))?;
+        for name in ["secrets", "secrets-getter", "secrets-post-renderer"] {
+            // the plugin may not be installed, so a failure here is fine
+            let mut command = Command::new("helm");
+            command.arg("plugin").arg("uninstall").arg(name);
+            StreamCommand::new(command).run()?;
+            let mut command = Command::new("helm");
+            command
+                .arg("plugin")
+                .arg("install")
+                .arg("--keyring")
+                .arg(keyring.path())
+                .arg(format!(
+                    "https://github.com/jkroepke/helm-secrets/releases/download/{tag}/{name}-{version}.tgz"
+                ));
+            if !StreamCommand::new(command).run()? {
+                return Err(RopsError::Error(format!(
+                    "Failed to install Helm plugin '{name}'"
+                )));
+            }
         }
+        Ok(())
     }
 
     pub fn get_vars_path(&self, env: String, vars: Option<&str>) -> Option<String> {
