@@ -121,6 +121,15 @@ impl Default for Tools {
                     )),
                 ),
                 ThirdPartyTool::new(
+                    "kubectl",
+                    "The Kubernetes command line tool",
+                    InstallMethod::GithubDownload(
+                        GithubDownloadRelease::new("kubernetes/kubernetes", "kubectl")
+                            .with_download_url("https://dl.k8s.io/release")
+                            .with_download_path("{version}/bin/{os}/{arch}/kubectl"),
+                    ),
+                ),
+                ThirdPartyTool::new(
                     "taplo",
                     "Configuration file editor for YAML and TOML",
                     InstallMethod::GithubDownload(GithubDownloadRelease::new(
