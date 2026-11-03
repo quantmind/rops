@@ -32,7 +32,7 @@ struct Tools {
 /// Drops everything before the first digit of a release tag, so that a tag such
 /// as `desktop-v0.5.7` matches an asset named after the bare `0.5.7`. Tags
 /// without a digit are left alone.
-fn strip_tag_prefix(tag: &str) -> String {
+pub(crate) fn strip_tag_prefix(tag: &str) -> String {
     match tag.find(|c: char| c.is_ascii_digit()) {
         Some(index) => tag[index..].to_string(),
         None => tag.to_string(),

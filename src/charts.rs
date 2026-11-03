@@ -3,6 +3,7 @@ use crate::{
     error::{RopsError, RopsResult},
     git::{GitSettings, GithubDownloadRelease},
     settings::Settings,
+    tools::strip_tag_prefix,
     utils::{StreamCommand, as_true, new_table},
 };
 use comfy_table::Table;
@@ -10,15 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::{collections::HashMap, path::Path, process::Command};
-
-/// The helm-secrets repository on GitHub.
-const HELM_SECRETS_REPO: &str = "jkroepke/helm-secrets";
-/// The plugins helm-secrets is split into on Helm 4.
-const HELM_SECRETS_PLUGINS: [&str; 3] = ["secrets", "secrets-getter", "secrets-post-renderer"];
-/// The public key signing the helm-secrets plugins, as a binary keyring:
-/// fingerprint 1F34F95B4F30BC5B06E0D7CC3F619F17002790D8, from
-/// https://github.com/jkroepke.gpg
-const HELM_SECRETS_KEYRING: &[u8] = include_bytes!("keys/helm-secrets.gpg");
 
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum ChartsCommand {
@@ -239,13 +231,16 @@ impl ChartsSettings {
     /// with the public key of the helm-secrets author, which is built into
     /// rops rather than downloaded from the same place as the plugins.
     pub fn install_helm_secrets(settings: &Settings) -> RopsResult<()> {
-        let tag = GithubDownloadRelease::new(HELM_SECRETS_REPO, "")
-            .get_release(settings)?
-            .tag_name;
-        let version = tag.trim_start_matches('v');
+        let tag = GithubDownloadRelease::new("jkroepke/helm-secrets", "secrets-{version}.tgz")
+            .with_version_fn(strip_tag_prefix)
+            .get_asset(settings)?
+            .version;
+        let version = strip_tag_prefix(&tag);
+        // public key of the helm-secrets author, fingerprint
+        // 1F34F95B4F30BC5B06E0D7CC3F619F17002790D8, from https://github.com/jkroepke.gpg
         let mut keyring = tempfile::NamedTempFile::new()?;
-        keyring.write_all(HELM_SECRETS_KEYRING)?;
-        for name in HELM_SECRETS_PLUGINS {
+        keyring.write_all(include_bytes!("keys/helm-secrets.gpg"))?;
+        for name in ["secrets", "secrets-getter", "secrets-post-renderer"] {
             // the plugin may not be installed, so a failure here is fine
             let mut command = Command::new("helm");
             command.arg("plugin").arg("uninstall").arg(name);
@@ -257,7 +252,7 @@ impl ChartsSettings {
                 .arg("--keyring")
                 .arg(keyring.path())
                 .arg(format!(
-                    "https://github.com/{HELM_SECRETS_REPO}/releases/download/{tag}/{name}-{version}.tgz"
+                    "https://github.com/jkroepke/helm-secrets/releases/download/{tag}/{name}-{version}.tgz"
                 ));
             if !StreamCommand::new(command).run()? {
                 return Err(RopsError::Error(format!(
