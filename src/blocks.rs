@@ -223,7 +223,7 @@ impl Metablock {
 ///
 /// Decoding an error response would fail with reqwest's opaque "error decoding
 /// response body", losing both the status and the message from the API.
-fn check(response: Response) -> RopsResult<Response> {
+pub(crate) fn check(response: Response) -> RopsResult<Response> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);

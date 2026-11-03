@@ -1,4 +1,5 @@
 use crate::{
+    blocks::check,
     error::{RopsError, RopsResult},
     settings::Settings,
     utils::{Secret, StreamCommand, rimraf},
@@ -211,11 +212,12 @@ impl GithubDownloadRelease {
             url
         };
         // Fetch the latest release information from GitHub
-        let release: Release = self
+        let response = self
             .request(url)
             .header("Accept", "application/vnd.github+json")
             .send()
-            .map_err(|err| RopsError::Error(err.to_string()))?
+            .map_err(|err| RopsError::Error(err.to_string()))?;
+        let release: Release = check(response)?
             .json()
             .map_err(|err| RopsError::Error(err.to_string()))?;
         Ok(release)
