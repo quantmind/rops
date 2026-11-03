@@ -1,7 +1,7 @@
 use crate::{
     blocks::BlockConfig,
     error::{RopsError, RopsResult},
-    git::GitSettings,
+    git::{GitSettings, GithubDownloadRelease},
     settings::Settings,
     utils::{StreamCommand, as_true, new_table},
 };
@@ -11,9 +11,8 @@ use std::fs;
 use std::io::Write;
 use std::{collections::HashMap, path::Path, process::Command};
 
-/// The helm-secrets repository, and the release installed on Helm 4.
-const HELM_SECRETS_REPO: &str = "https://github.com/jkroepke/helm-secrets";
-const HELM_SECRETS_VERSION: &str = "4.7.10";
+/// The helm-secrets repository on GitHub.
+const HELM_SECRETS_REPO: &str = "jkroepke/helm-secrets";
 /// The plugins helm-secrets is split into on Helm 4.
 const HELM_SECRETS_PLUGINS: [&str; 3] = ["secrets", "secrets-getter", "secrets-post-renderer"];
 /// The public key signing the helm-secrets plugins, as a binary keyring:
@@ -135,7 +134,7 @@ impl ChartsCommand {
                 }
                 Ok(())
             }
-            Self::Update => ChartsSettings::install_helm_secrets(),
+            Self::Update => ChartsSettings::install_helm_secrets(settings),
             Self::Deploy {
                 chart,
                 env,
@@ -233,34 +232,37 @@ impl ChartsSettings {
         std::env::var("CHARTS_DEFAULT_NAMESPACE").unwrap_or_else(|_| "services".to_string())
     }
 
-    /// Install the helm-secrets plugin.
+    /// Install the latest helm-secrets plugin.
     ///
     /// Helm 4 only installs signed plugins, and helm-secrets is published for
     /// it as three signed plugins on its GitHub release. They are verified
-    /// with the public key of the helm-secrets author, which is shipped with
+    /// with the public key of the helm-secrets author, which is built into
     /// rops rather than downloaded from the same place as the plugins.
-    /// A plugin already installed at the same version is left as it is, and
-    /// one at another version is replaced. Helm 3 installs the plugin from the
-    /// git repository, as before.
-    pub fn install_helm_secrets() -> RopsResult<()> {
+    /// A plugin already at the latest version is left as it is, and one at
+    /// another version is replaced. Helm 3 installs the plugin from the git
+    /// repository, as before.
+    pub fn install_helm_secrets(settings: &Settings) -> RopsResult<()> {
+        let repo = format!("https://github.com/{HELM_SECRETS_REPO}");
         if Self::helm_version()?.major < 4 {
-            return Self::install_helm_plugin("secrets", HELM_SECRETS_REPO, None);
+            return Self::install_helm_plugin("secrets", &repo, None);
         }
+        let tag = GithubDownloadRelease::new(HELM_SECRETS_REPO, "")
+            .get_release(settings)?
+            .tag_name;
+        let version = tag.trim_start_matches('v');
         let installed = Self::helm_plugins()?;
         let mut keyring = tempfile::NamedTempFile::new()?;
         keyring.write_all(HELM_SECRETS_KEYRING)?;
         for name in HELM_SECRETS_PLUGINS {
             match installed.get(name) {
-                Some(version) if version == HELM_SECRETS_VERSION => {
+                Some(current) if current == version => {
                     log::info!("helm plugin {name} {version} is already installed");
                     continue;
                 }
                 Some(_) => Self::run_helm(Self::helm(&["plugin", "uninstall", name]))?,
                 None => {}
             }
-            let url = format!(
-                "{HELM_SECRETS_REPO}/releases/download/v{HELM_SECRETS_VERSION}/{name}-{HELM_SECRETS_VERSION}.tgz"
-            );
+            let url = format!("{repo}/releases/download/{tag}/{name}-{version}.tgz");
             let mut command = Self::helm(&["plugin", "install", "--keyring"]);
             command.arg(keyring.path()).arg(url);
             Self::run_helm(command)?;

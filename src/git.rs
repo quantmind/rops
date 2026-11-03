@@ -49,7 +49,7 @@ pub struct ReleaseAsset {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Release {
-    tag_name: String,
+    pub tag_name: String,
     assets: Vec<ReleaseAsset>,
 }
 
