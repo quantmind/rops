@@ -232,110 +232,40 @@ impl ChartsSettings {
         std::env::var("CHARTS_DEFAULT_NAMESPACE").unwrap_or_else(|_| "services".to_string())
     }
 
-    /// Install the latest helm-secrets plugin.
+    /// Install the latest helm-secrets plugins.
     ///
     /// Helm 4 only installs signed plugins, and helm-secrets is published for
     /// it as three signed plugins on its GitHub release. They are verified
     /// with the public key of the helm-secrets author, which is built into
     /// rops rather than downloaded from the same place as the plugins.
-    /// A plugin already at the latest version is left as it is, and one at
-    /// another version is replaced. Helm 3 installs the plugin from the git
-    /// repository, as before.
     pub fn install_helm_secrets(settings: &Settings) -> RopsResult<()> {
-        let repo = format!("https://github.com/{HELM_SECRETS_REPO}");
-        if Self::helm_version()?.major < 4 {
-            return Self::install_helm_plugin("secrets", &repo, None);
-        }
         let tag = GithubDownloadRelease::new(HELM_SECRETS_REPO, "")
             .get_release(settings)?
             .tag_name;
         let version = tag.trim_start_matches('v');
-        let installed = Self::helm_plugins()?;
         let mut keyring = tempfile::NamedTempFile::new()?;
         keyring.write_all(HELM_SECRETS_KEYRING)?;
         for name in HELM_SECRETS_PLUGINS {
-            match installed.get(name) {
-                Some(current) if current == version => {
-                    log::info!("helm plugin {name} {version} is already installed");
-                    continue;
-                }
-                Some(_) => Self::run_helm(Self::helm(&["plugin", "uninstall", name]))?,
-                None => {}
+            // the plugin may not be installed, so a failure here is fine
+            let mut command = Command::new("helm");
+            command.arg("plugin").arg("uninstall").arg(name);
+            StreamCommand::new(command).run()?;
+            let mut command = Command::new("helm");
+            command
+                .arg("plugin")
+                .arg("install")
+                .arg("--keyring")
+                .arg(keyring.path())
+                .arg(format!(
+                    "https://github.com/{HELM_SECRETS_REPO}/releases/download/{tag}/{name}-{version}.tgz"
+                ));
+            if !StreamCommand::new(command).run()? {
+                return Err(RopsError::Error(format!(
+                    "Failed to install Helm plugin '{name}'"
+                )));
             }
-            let url = format!("{repo}/releases/download/{tag}/{name}-{version}.tgz");
-            let mut command = Self::helm(&["plugin", "install", "--keyring"]);
-            command.arg(keyring.path()).arg(url);
-            Self::run_helm(command)?;
         }
         Ok(())
-    }
-
-    /// The version of the helm client.
-    fn helm_version() -> RopsResult<semver::Version> {
-        let output = Self::helm_output(&["version", "--template", "{{.Version}}"])?;
-        Ok(semver::Version::parse(
-            output.trim().trim_start_matches('v'),
-        )?)
-    }
-
-    /// The installed helm plugins, by name, with their version.
-    fn helm_plugins() -> RopsResult<HashMap<String, String>> {
-        let output = Self::helm_output(&["plugin", "list"])?;
-        Ok(output
-            .lines()
-            .skip(1)
-            .filter_map(|line| {
-                let mut columns = line.split_whitespace();
-                Some((columns.next()?.to_string(), columns.next()?.to_string()))
-            })
-            .collect())
-    }
-
-    fn helm(args: &[&str]) -> Command {
-        let mut command = Command::new("helm");
-        command.args(args);
-        command
-    }
-
-    /// Run a helm command and return its standard output.
-    fn helm_output(args: &[&str]) -> RopsResult<String> {
-        let output = Self::helm(args).output()?;
-        if !output.status.success() {
-            return Err(RopsError::Error(format!(
-                "helm {} failed: {}",
-                args.join(" "),
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    }
-
-    /// Run a helm command, streaming its output, and fail if it fails.
-    fn run_helm(command: Command) -> RopsResult<()> {
-        let mut command = StreamCommand::new(command);
-        if command.run()? {
-            Ok(())
-        } else {
-            Err(RopsError::Error(format!(
-                "Failed to run {}",
-                command.format_command()
-            )))
-        }
-    }
-
-    pub fn install_helm_plugin(name: &str, repo: &str, action: Option<&str>) -> RopsResult<()> {
-        let action = action.unwrap_or("install");
-        let mut command = Command::new("helm");
-        command.arg("plugin").arg(action).arg(repo);
-        if StreamCommand::new(command).run()? {
-            Ok(())
-        } else if action == "install" {
-            Self::install_helm_plugin(name, name, Some("update"))
-        } else {
-            Err(RopsError::Error(format!(
-                "Failed to {action} Helm plugin '{repo}'"
-            )))
-        }
     }
 
     pub fn get_vars_path(&self, env: String, vars: Option<&str>) -> Option<String> {
