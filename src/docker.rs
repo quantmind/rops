@@ -86,9 +86,12 @@ impl DockerCommand {
                 }
 
                 // Prepare the Docker build command
-                // Disable DOCKER_BUILDKIT to avoid manifest list creation with attestations
+                // Disable default BuildKit attestations: with them the pushed
+                // per-arch image is a manifest list, which `docker manifest create`
+                // rejects as a source. Ignored by the legacy builder.
                 let mut command = Command::new("docker");
                 command
+                    .env("BUILDX_NO_DEFAULT_ATTESTATIONS", "1")
                     .arg("build")
                     .arg("-f")
                     .arg(&dockerfile)
