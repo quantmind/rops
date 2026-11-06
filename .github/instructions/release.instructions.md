@@ -10,6 +10,10 @@ through the build workflow, extracts the matching `## vX.Y.Z` section from
 `docs/release-notes.md` and publishes it as the GitHub Release body with
 the binaries attached.
 
+Only prepare a release when the developer explicitly asks for one. A code
+change or bug fix is not a request to release: do not bump the version or
+edit `docs/release-notes.md` as part of it.
+
 ## Cutting a release
 
 1. Bump `version` in `Cargo.toml` to the new release version and run

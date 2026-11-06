@@ -370,7 +370,16 @@ impl DeployChart {
 
     pub fn add_helm_repo(&self, repo_name: &str, repo_url: &str) -> RopsResult<()> {
         let mut command = Command::new("helm");
-        command.arg("repo").arg("add").arg(repo_name).arg(repo_url);
+        // --force-update re-adds the repo when it is already registered, which
+        // also downloads its index. Without it, helm skips a registered repo
+        // and downloads nothing, so a missing or stale index makes the deploy
+        // fail with "no cached repo found".
+        command
+            .arg("repo")
+            .arg("add")
+            .arg("--force-update")
+            .arg(repo_name)
+            .arg(repo_url);
         if StreamCommand::new(command).run()? {
             Ok(())
         } else {
