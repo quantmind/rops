@@ -1,5 +1,25 @@
 # Release notes
 
+## v0.7.1
+
+A bug-fix release for chart deploys, multi-arch Docker images and GitHub
+release downloads.
+
+### Improvements and fixes
+
+- Deploying a chart no longer fails with "no cached repo found" when its Helm
+  repository is already registered with a missing or stale index: rops now
+  adds the repository with `--force-update`, which always downloads its index
+  ([#9](https://github.com/quantmind/rops/pull/9)).
+- Multi-arch Docker builds disable BuildKit's default attestations, so each
+  pushed per-arch image is a plain image that `docker manifest create`
+  accepts ([#9](https://github.com/quantmind/rops/pull/9)).
+- A failed GitHub API request when downloading a tool release now reports the
+  HTTP status and the API's message instead of an opaque "error decoding
+  response body" ([#8](https://github.com/quantmind/rops/pull/8)).
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.7.0...v0.7.1)
+
 ## v0.7.0
 
 Kubernetes tooling and Helm 4 support. `kubectl` can now be installed as a
