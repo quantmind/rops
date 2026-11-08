@@ -1,5 +1,17 @@
 # Release notes
 
+## v0.7.2
+
+A small release that lets metablock routes carry tags.
+
+### New features
+
+- Routes in a metablock configuration accept an optional `tags` list, sent
+  to the metablock API with the block so that extensions can find the route
+  by tag. Routes without tags are sent exactly as before.
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.7.1...v0.7.2)
+
 ## v0.7.1
 
 A bug-fix release for chart deploys, multi-arch Docker images and GitHub

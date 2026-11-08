@@ -50,6 +50,9 @@ pub struct Route {
     pub preserve_host: bool,
     #[serde(default)]
     pub strip_path: bool,
+    /// Tags of the route in Kong, used by extensions to find it
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
