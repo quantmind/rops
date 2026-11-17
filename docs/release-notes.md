@@ -1,5 +1,21 @@
 # Release notes
 
+## v0.7.3
+
+A small release for charts whose values schema rejects keys it does not
+define.
+
+### New features
+
+- A chart in the charts configuration accepts `shared-vars: false`, which
+  deploys it without the `values.yaml` and `secrets.yaml` shared by every
+  chart of the environment, passing only the chart's own. Needed for charts
+  such as the community Loki chart, which fails on the top-level `vars` and
+  `secrets` keys of the shared files. Charts without the setting are deployed
+  exactly as before.
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.7.2...v0.7.3)
+
 ## v0.7.2
 
 A small release that lets metablock routes carry tags.

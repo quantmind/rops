@@ -82,6 +82,11 @@ pub struct Chart {
     pub block: Option<BlockConfig>,
     #[serde(default = "as_true", rename = "append-namespace")]
     pub append_namespace: bool,
+    /// Pass the values.yaml and secrets.yaml of the environment, shared by
+    /// every chart, before the chart's own. Off for a chart whose values
+    /// schema rejects keys it does not define.
+    #[serde(default = "as_true", rename = "shared-vars")]
+    pub shared_vars: bool,
 }
 
 impl Default for ChartsSettings {
@@ -310,11 +315,13 @@ impl DeployChart {
             .arg(&self.namespace);
 
         if let Some(var_location) = &self.vars {
-            command
-                .arg("-f")
-                .arg(format!("{}/values.yaml", var_location))
-                .arg("-f")
-                .arg(format!("{}/secrets.yaml", var_location));
+            if self.config.shared_vars {
+                command
+                    .arg("-f")
+                    .arg(format!("{}/values.yaml", var_location))
+                    .arg("-f")
+                    .arg(format!("{}/secrets.yaml", var_location));
+            }
 
             let var_repo = format!("{}/{}", var_location, self.chart);
             if Path::new(&var_repo).is_dir() {
