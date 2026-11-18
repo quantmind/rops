@@ -183,8 +183,14 @@ impl ChartsCommand {
                         deploy_chart.run()?;
                     }
                     if let Some(block_config) = config.block.as_ref() {
-                        let metablock = settings.blocks.metablock()?;
-                        metablock.apply(settings, block_config)?;
+                        if dry_run.unwrap_or_default() {
+                            // a dry run must not create or update the block,
+                            // it logs the request instead
+                            block_config.dry_run(settings)?;
+                        } else {
+                            let metablock = settings.blocks.metablock()?;
+                            metablock.apply(settings, block_config)?;
+                        }
                     }
                     Ok(())
                 }

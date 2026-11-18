@@ -120,6 +120,28 @@ impl BlockConfig {
             )),
         }
     }
+
+    /// The space of the block, the default space of the settings when not set
+    pub fn space_name(&self, settings: &Settings) -> String {
+        self.space
+            .clone()
+            .unwrap_or_else(|| settings.blocks.default_space.clone())
+    }
+
+    /// Log the block a deploy would apply, without calling the API
+    ///
+    /// Used by a dry run, so it needs no API token. Whether the block would be
+    /// created or updated is not known without asking the API.
+    pub fn dry_run(&self, settings: &Settings) -> RopsResult<()> {
+        let name = self.block_name()?;
+        let space = self.space_name(settings);
+        log::info!(
+            "Dry run mode enabled, block '{name}' in space '{space}' is not applied, \
+             its request body would be:\n{}",
+            serde_json::to_string_pretty(self)?
+        );
+        Ok(())
+    }
 }
 
 impl Default for BlockSettings {
@@ -204,10 +226,7 @@ impl Metablock {
     }
 
     pub fn apply(&self, settings: &Settings, block_config: &BlockConfig) -> RopsResult<()> {
-        let space_name = block_config
-            .space
-            .clone()
-            .unwrap_or_else(|| settings.blocks.default_space.clone());
+        let space_name = block_config.space_name(settings);
         let name = block_config.block_name()?;
         if let Some(block) = self.get_block(&space_name, &name)? {
             log::info!("Block '{name}' already exists in space '{space_name}'. Updating...");
@@ -267,6 +286,7 @@ pub(crate) fn check(response: Response) -> RopsResult<Response> {
 #[cfg(test)]
 mod tests {
     use super::{Block, BlockConfig, Org};
+    use crate::settings::Settings;
 
     fn config(yaml: &str) -> BlockConfig {
         serde_yaml::from_str(yaml).unwrap()
@@ -312,6 +332,26 @@ mod tests {
     fn block_needs_name_or_subdomain() {
         let block = config("upstream: http://nothing\nroutes: []");
         assert!(block.block_name().is_err());
+    }
+
+    #[test]
+    fn block_space_defaults_to_settings() {
+        let mut settings = Settings::default();
+        settings.blocks.default_space = "quantmind".into();
+        let block = config("name: www\nupstream: http://www\nroutes: []");
+        assert_eq!(block.space_name(&settings), "quantmind");
+        let block = config("name: www\nspace: metablock\nupstream: http://www\nroutes: []");
+        assert_eq!(block.space_name(&settings), "metablock");
+    }
+
+    #[test]
+    fn block_dry_run_calls_nothing() {
+        // no API token and no API: a dry run only logs the request body
+        let settings = Settings::default();
+        let block = config("subdomain: pgadmin.sso\nupstream: http://pgadmin\nroutes: []");
+        assert!(block.dry_run(&settings).is_ok());
+        let block = config("upstream: http://nothing\nroutes: []");
+        assert!(block.dry_run(&settings).is_err());
     }
 
     // Responses from the live API, the fields the structs do not use removed
