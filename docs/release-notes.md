@@ -1,5 +1,31 @@
 # Release notes
 
+## v0.7.4
+
+Metablock blocks can be served at a subdomain, and two fields of the block
+configuration that never reached the metablock API now do.
+
+### New features
+
+- A block in the charts configuration accepts a `subdomain`, two slugs joined
+  by a dot such as `pgadmin.sso`, serving the block at
+  `pgadmin.sso.<space domain>`. The `name` can then be left out: the block is
+  named after the subdomain with the dot replaced by a dash, `pgadmin-sso`,
+  as the metablock API names it. A block needs one of the two, and blocks with
+  a `name` are applied exactly as before.
+
+### Improvements and fixes
+
+- The CDN setting of a block is sent as `use_cdn`, the field the metablock API
+  reads. It was sent as `used_cdn`, which the API ignored, so a block was
+  always created without the CDN. A chart configuration sets it with
+  `use_cdn: true`.
+- A block without `tags` no longer fails to apply with a 422: the tags are
+  left out of the request rather than sent as `null`, which the metablock API
+  refuses.
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.7.3...v0.7.4)
+
 ## v0.7.3
 
 A small release for charts whose values schema rejects keys it does not

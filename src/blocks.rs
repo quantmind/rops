@@ -26,17 +26,31 @@ pub struct BlockSettings {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct BlockConfig {
-    pub name: String,
+    /// Name of the block, it can be left out when the block has a subdomain
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Part of the block domain before the domain of the space, when it is
+    /// not the name of the block: `app.v2` serves the block at
+    /// `app.v2.<space domain>`, and its name is `app-v2`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdomain: Option<String>,
     pub space: Option<String>,
+    /// URL of the service the block forwards its requests to
+    ///
+    /// Required: rops deploys backend services, so every block it applies
+    /// forwards to one. An html block serving a website has no upstream and
+    /// is deployed with metablock-web instead, the API refuses an empty one.
     pub upstream: String,
     pub routes: Vec<Route>,
+    /// Left out of the request when not set, the API refuses a null list
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub root: bool,
     #[serde(default)]
     pub html: bool,
     #[serde(default)]
-    pub used_cdn: bool,
+    pub use_cdn: bool,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -89,6 +103,23 @@ pub struct Metablock {
     /// Id of the organization the requests act within
     pub org_id: String,
     pub client: Client,
+}
+
+impl BlockConfig {
+    /// The name of the block, given or taken from the subdomain
+    ///
+    /// The API names a block with a subdomain after it, the dot replaced by a
+    /// dash, so `app.v2` is the block `app-v2`. The name is needed to find
+    /// the block before deciding to create or update it.
+    pub fn block_name(&self) -> RopsResult<String> {
+        match (&self.name, &self.subdomain) {
+            (Some(name), _) => Ok(name.clone()),
+            (None, Some(subdomain)) => Ok(subdomain.replace('.', "-")),
+            (None, None) => Err(RopsError::Error(
+                "A block needs a name or a subdomain".into(),
+            )),
+        }
+    }
 }
 
 impl Default for BlockSettings {
@@ -177,18 +208,13 @@ impl Metablock {
             .space
             .clone()
             .unwrap_or_else(|| settings.blocks.default_space.clone());
-        if let Some(block) = self.get_block(&space_name, &block_config.name)? {
-            log::info!(
-                "Block '{}' already exists in space '{space_name}'. Updating...",
-                block_config.name,
-            );
+        let name = block_config.block_name()?;
+        if let Some(block) = self.get_block(&space_name, &name)? {
+            log::info!("Block '{name}' already exists in space '{space_name}'. Updating...");
             let block = self.update_block(&block.id, block_config)?;
             log::info!("Block '{}' updated", block.full_name);
         } else {
-            log::info!(
-                "Creating new block '{}' in space '{space_name}'",
-                block_config.name,
-            );
+            log::info!("Creating new block '{name}' in space '{space_name}'");
             let block = self.create_block(&space_name, block_config)?;
             log::info!("Block '{}' created", block.full_name);
         }
@@ -240,7 +266,53 @@ pub(crate) fn check(response: Response) -> RopsResult<Response> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Block, Org};
+    use super::{Block, BlockConfig, Org};
+
+    fn config(yaml: &str) -> BlockConfig {
+        serde_yaml::from_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn block_name_is_given() {
+        let block = config("name: code\nupstream: http://code\nroutes: []");
+        assert_eq!(block.block_name().unwrap(), "code");
+        let body = serde_json::to_value(&block).unwrap();
+        assert_eq!(body["name"], "code");
+        assert!(body.get("subdomain").is_none());
+    }
+
+    #[test]
+    fn block_name_from_subdomain() {
+        let block = config("subdomain: pgadmin.sso\nupstream: http://pgadmin\nroutes: []");
+        assert_eq!(block.block_name().unwrap(), "pgadmin-sso");
+        // only the subdomain is sent, the API takes the name from it
+        let body = serde_json::to_value(&block).unwrap();
+        assert_eq!(body["subdomain"], "pgadmin.sso");
+        assert!(body.get("name").is_none());
+    }
+
+    #[test]
+    fn block_tags_left_out_when_not_set() {
+        let block = config("name: www\nupstream: http://www\nroutes: []");
+        let body = serde_json::to_value(&block).unwrap();
+        assert!(body.get("tags").is_none());
+        let block = config("name: www\nupstream: http://www\nroutes: []\ntags: [web]");
+        let body = serde_json::to_value(&block).unwrap();
+        assert_eq!(body["tags"], serde_json::json!(["web"]));
+    }
+
+    #[test]
+    fn block_use_cdn_is_sent() {
+        let block = config("name: www\nupstream: http://www\nroutes: []\nuse_cdn: true");
+        let body = serde_json::to_value(&block).unwrap();
+        assert_eq!(body["use_cdn"], true);
+    }
+
+    #[test]
+    fn block_needs_name_or_subdomain() {
+        let block = config("upstream: http://nothing\nroutes: []");
+        assert!(block.block_name().is_err());
+    }
 
     // Responses from the live API, the fields the structs do not use removed
 
