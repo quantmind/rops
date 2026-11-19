@@ -1,5 +1,20 @@
 # Release notes
 
+## v0.7.5
+
+A fix release: a dry run of the charts command no longer touches metablock
+blocks.
+
+### Improvements and fixes
+
+- A dry run of a chart with a `block` no longer creates or updates the block
+  through the metablock API. It logs the block name, its space and the request
+  body that a deploy would send. It needs no API token, so it also works where
+  no metablock credentials are configured. It cannot tell whether the block
+  would be created or updated, because that needs the API.
+
+[Full changelog](https://github.com/quantmind/rops/compare/v0.7.4...v0.7.5)
+
 ## v0.7.4
 
 Metablock blocks can be served at a subdomain, and two fields of the block
